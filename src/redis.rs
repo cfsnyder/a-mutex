@@ -181,6 +181,7 @@ pub struct RedisGuard<'a, T> {
 
 impl<'a, T> RedisGuard<'a, T> {
     fn new(mutex: &'a RedisMutex, exp_at: Duration) -> RedisGuard<'a, T> {
+        trace!(key = %mutex.key, mutex_id = %mutex.mutex_id, expires_at = ?exp_at, "acquired lock");
         let (drop_tx, mut drop_rx) = tokio::sync::oneshot::channel();
         let mutex_clone = mutex.clone();
         let _ = tokio::spawn(async move {
@@ -204,7 +205,7 @@ impl<'a, T> RedisGuard<'a, T> {
                     _ = renewal_interval.tick() => {
                         match mutex.try_renew_lock().await {
                             Ok(Some(new_exp)) => {
-                                trace!(key = %mutex.key, mutex_id = %mutex.mutex_id, "renewed lock lease");
+                                trace!(key = %mutex.key, mutex_id = %mutex.mutex_id, expires_at = ?new_exp, "renewed lock lease");
                                 panic_timeout.reset(tokio::time::Instant::from_std(Instant::now() + new_exp
                                     - SystemTime::now().duration_since(UNIX_EPOCH).unwrap()
                                     - Duration::from_millis(RENEWAL_PANIC_BUFFER_MILLIS)));
@@ -231,7 +232,9 @@ impl<'a, T> RedisGuard<'a, T> {
                 Err(e) => {
                     error!(key = %mutex.key, mutex_id = %mutex.mutex_id, "failed to drop lock: {}", e);
                 }
-                _ => {}
+                _ => {
+                    trace!(key = %mutex.key, mutex_id = %mutex.mutex_id, "successfully dropped lock");
+                }
             }
         });
         RedisGuard {
@@ -248,6 +251,7 @@ impl<'a, T> Drop for RedisGuard<'a, T> {
     fn drop(&mut self) {
         if let Some(tx) = take(&mut self.drop_tx) {
             let _ = tx.send(());
+            trace!(key = %self.mutex.key, mutex_id = %self.mutex.mutex_id, "guard dropped");
         }
     }
 }
