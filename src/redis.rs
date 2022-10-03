@@ -206,7 +206,7 @@ impl<'a, T> RedisGuard<'a, T> {
                         match mutex.try_renew_lock().await {
                             Ok(Some(new_exp)) => {
                                 trace!(key = %mutex.key, mutex_id = %mutex.mutex_id, expires_at = ?new_exp, "renewed lock lease");
-                                panic_timeout.reset(tokio::time::Instant::from_std(Instant::now() + new_exp
+                                panic_timeout.as_mut().reset(tokio::time::Instant::from_std(Instant::now() + new_exp
                                     - SystemTime::now().duration_since(UNIX_EPOCH).unwrap()
                                     - Duration::from_millis(RENEWAL_PANIC_BUFFER_MILLIS)));
                             },
@@ -218,7 +218,6 @@ impl<'a, T> RedisGuard<'a, T> {
                                 continue;
                             },
                         }
-                        break;
                     }
                     _ = &mut panic_timeout => {
                         panic!("failed to renew mutex before lease expiration: {}", mutex.key);
