@@ -218,7 +218,6 @@ impl<'a, T> RedisGuard<'a, T> {
                                 continue;
                             },
                         }
-                        break;
                     }
                     _ = &mut panic_timeout => {
                         panic!("failed to renew mutex before lease expiration: {}", mutex.key);
